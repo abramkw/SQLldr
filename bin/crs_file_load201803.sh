@@ -35,7 +35,7 @@
 
 
 
-#
+#参数赋值
 #set the param
 #
 USRPWD=`$JOBCTL_BIN_PATH/dbconnect get userid|awk '{usri=index($0,"=")
@@ -72,7 +72,7 @@ USRPWD=`$JOBCTL_BIN_PATH/dbconnect get userid|awk '{usri=index($0,"=")
 
   varArrayTabnm[3]='CRS_PERSONAL_CUSTOMER_TAX_INFO'
 
-
+#备份目录建立
 #back
   if [ ! -d ${varDirData}/backup ];then
 
@@ -82,9 +82,9 @@ USRPWD=`$JOBCTL_BIN_PATH/dbconnect get userid|awk '{usri=index($0,"=")
  
 
 
- 
+##########################################################
 #cd the dir of ksh
-
+###########################################################
 
   if [ "${KSH_DIR}_NULL" != "_NULL" ] && [ -d ${KSH_DIR} ];then
 
@@ -98,9 +98,10 @@ USRPWD=`$JOBCTL_BIN_PATH/dbconnect get userid|awk '{usri=index($0,"=")
 
   fi
 
-#
+###############################################################
+#数据库连接测试
 # db connection test
-#
+###############################################################
     varSql="SELECT SYSDATE FROM DUAL;"
     varRes=`sqlplus -S ${varDBUser}/${varDBPass}@${varDBName} <<EOF >/dev/null
             set ECHO OFF
@@ -143,28 +144,46 @@ USRPWD=`$JOBCTL_BIN_PATH/dbconnect get userid|awk '{usri=index($0,"=")
 #
 #    varFileRow=` grep -c '.*' ${varDirData}/crslist.ls `
 
+
+#循环次序与crslist文件行数初始化赋值
     varLoopCnt=0
     varFileRow=0
+    
+########################################################################################    
+# 循环主体
+########################################################################################
     while [ ${varFileRow} -lt 4 ]; do
 
       echo `date +%Y-%m-%d" "%H:%M:%S`" [ check ] FileList total $filerow not -gt 4 ,sleep 60s and try again " | tee -a ${varLog}
+      
+######休眠时间定义
       sleep 60
-#
+
+##########################################
 # produrct filelist
 #
+###########################################
+#读取数据文件目录下的文件名，输出到crslist.ls文件
+###########################################
       FileList=`ls ${varDirData} | grep "^CRS.*RRS.gz.*" | tee ${varDirData}/crslist.ls`
       varRet=$?
       if [ ${varRet} -ne 0 ];then
          varLogMsg=`echo "read filelist loop to ${varDirData}/crslist.ls`
          echo `date +%Y-%m-%d" "%H:%M:%S`" [ check ] ERROR " "${varLogMsg}" | tee -a ${varLog}
          exit 1
-
       fi
       echo `date +%Y-%m-%d" "%H:%M:%S`" [ check ] success read FileList loop to ${varDirData}/crslist.ls " | tee -a ${varLog}
+      
+######################################
+#读取crslist.ls的行数--数据文件到了几个文件
+#######################################
       varFileRow=` grep -c '.*' ${varDirData}/crslist.ls `
       echo `date +%Y-%m-%d" "%H:%M:%S`" [ check ] file row is ${varFileRow} " | tee -a ${varLog}
       echo `date +%Y-%m-%d" "%H:%M:%S`" [ check ] file list is ${FileList} " | tee -a ${varLog}
 
+######################################
+#循环次序自增
+######################################
       varLoopCnt=`expr ${varLoopCnt} + 1`
       if [ ${varLoopCnt} -gt 300 ];then
 
@@ -178,15 +197,19 @@ USRPWD=`$JOBCTL_BIN_PATH/dbconnect get userid|awk '{usri=index($0,"=")
 
 
   n=0
+  ###################################
+  #循环加载文件主体
+  ###################################
   for varFileName in ${FileList}
   do
+  #获取表名，控制文件名，数据文件名
     varTabnm=` echo ${varFileName} | awk -F '.' '{print $1}' `
     varDirTabctl=${varDirCtl}/${varTabnm}.ctl
     varDirTabdat=${varDirData}/${varTabnm}.RRS
 
     echo `date +%Y-%m-%d" "%H:%M:%S`" $n ###########################################################" | tee -a ${varLog}
 
-
+#复制数据文件，去日期后缀
     varRes=`cp ${varDirData}/${varFileName} ${varDirTabdat}.gz`
     if [ ${varRet} -ne 0 ];then
 
@@ -196,6 +219,7 @@ USRPWD=`$JOBCTL_BIN_PATH/dbconnect get userid|awk '{usri=index($0,"=")
     fi
     echo `date +%Y-%m-%d" "%H:%M:%S`" [ copy ] ${varDirTabdat}.gz.${varPeriod} to ${varDirTabdat}.gz [ success ]" | tee -a ${varLog}
 
+#解压数据文件
     varRes=`gunzip -f ${varDirTabdat}.gz`
     if [ ${varRet} -ne 0 ];then
 
@@ -204,7 +228,8 @@ USRPWD=`$JOBCTL_BIN_PATH/dbconnect get userid|awk '{usri=index($0,"=")
 
     fi
     echo `date +%Y-%m-%d" "%H:%M:%S`" [ gunzip ] ${varDirTabdat}.gz [ success ]" | tee -a ${varLog}
-
+    
+#SQL*ldr加载数据文件
     echo `date +%Y-%m-%d" "%H:%M:%S`" [ load ] ${varTabnm} file [ start ]" | tee -a ${varLog}
     varRes=`sqlldr userid="${varDBUser}/${varDBPass}@${varDBName}" control="${varDirTabctl}" data="${varDirTabdat}" log="$HOME/ZRTP_JP/log/${varTabnm}.log"`
     varRet=$?
@@ -216,7 +241,7 @@ USRPWD=`$JOBCTL_BIN_PATH/dbconnect get userid|awk '{usri=index($0,"=")
     fi
     echo `date +%Y-%m-%d" "%H:%M:%S`" [ load ] ${varTabnm} file [ success ]" | tee -a ${varLog}
 
-
+#加载完成，移动数据文件到备份目录
     mv -f ${varDirData}/${varFileName} ${varDirData}/backup
     varRet=$?
     if [ ${varRet} -ne 0 ];then
